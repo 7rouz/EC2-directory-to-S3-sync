@@ -6,34 +6,40 @@ import (
 	"path/filepath"
 	"runtime"
 
+	concurrent "github.com/echaouchna/go-threadpool"
 	"github.com/fsnotify/fsnotify"
 )
 
 var watcher *fsnotify.Watcher
 
-// Op describes a set of file operations.
-type operation uint32
+type actionType string
 
-// These are the generalized file operations that can trigger a notification.
 const (
-	copy operation = 1 << iota
-	remove
+	copy   actionType = "copy"
+	remove actionType = "remove"
 )
 
-type action struct {
-	path   string
-	action operation
+func (actionType actionType) value() string {
+	return string(actionType)
 }
 
-var fileOperations chan action
+type action struct {
+	path       string
+	actionType actionType
+}
 
-func handleFile() {
-	for {
-		select {
-		case file := <-fileOperations:
-			fmt.Printf("EVENT! %#v\n", file)
-		}
-	}
+// var fileOperations chan action
+var (
+	fileOperations chan concurrent.Action
+	version        string
+)
+
+func copyFile(id int, value interface{}) {
+	fmt.Printf("Adding! %#v\n", value)
+}
+
+func removeFile(id int, value interface{}) {
+	fmt.Printf("Removing! %#v\n", value)
 }
 
 func determineAction(path string) {
@@ -44,7 +50,7 @@ func determineAction(path string) {
 	}
 
 	if op == remove || !fi.IsDir() {
-		fileOperations <- action{path, op}
+		fileOperations <- concurrent.Action{Name: op.value(), Data: path}
 	} else if err := filepath.Walk(path, watchDir); err != nil {
 		fmt.Println("ERROR", err)
 	}
@@ -71,14 +77,19 @@ func main() {
 	defer watcher.Close()
 
 	cpuCount := runtime.NumCPU()
-	fileOperations = make(chan action, cpuCount)
+	fileOperations = make(chan concurrent.Action, cpuCount)
 	defer close(fileOperations)
 
 	// starting at the root of the project, walk each file/directory searching for
 	// directories
 	directoryPath := os.Args[1]
 
-	go handleFile()
+	actionJobs := make(map[string]concurrent.JobFunc)
+	actionJobs[copy.value()] = copyFile
+	actionJobs[remove.value()] = removeFile
+	_, _, stopWorkers := concurrent.RunWorkers(fileOperations, actionJobs, 0)
+
+	defer stopWorkers()
 
 	go func() {
 		for {
