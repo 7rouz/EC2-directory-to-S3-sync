@@ -4,43 +4,50 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/fsnotify/fsnotify"
 )
 
 var watcher *fsnotify.Watcher
 
-// main
-func main() {
+// Op describes a set of file operations.
+type operation uint32
 
-	// creates a new file watcher
-	watcher, _ = fsnotify.NewWatcher()
-	defer watcher.Close()
+// These are the generalized file operations that can trigger a notification.
+const (
+	copy operation = 1 << iota
+	remove
+)
 
-	// starting at the root of the project, walk each file/directory searching for
-	// directories
-	directory_path := os.Args[1]
-	if err := filepath.Walk(directory_path, watchDir); err != nil {
-		fmt.Println("ERROR", err)
+type action struct {
+	path   string
+	action operation
+}
+
+var fileOperations chan action
+
+func handleFile() {
+	for {
+		select {
+		case file := <-fileOperations:
+			fmt.Printf("EVENT! %#v\n", file)
+		}
+	}
+}
+
+func determineAction(path string) {
+	op := copy
+	fi, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		op = remove
 	}
 
-	done := make(chan bool)
-
-	go func() {
-		for {
-			select {
-			// watch for events
-			case event := <-watcher.Events:
-				fmt.Printf("EVENT! %#v\n", event)
-
-				// watch for errors
-			case err := <-watcher.Errors:
-				fmt.Println("ERROR", err)
-			}
-		}
-	}()
-
-	<-done
+	if op == remove || !fi.IsDir() {
+		fileOperations <- action{path, op}
+	} else if err := filepath.Walk(path, watchDir); err != nil {
+		fmt.Println("ERROR", err)
+	}
 }
 
 // watchDir gets run as a walk func, searching for directories to add watchers to
@@ -51,6 +58,45 @@ func watchDir(path string, fi os.FileInfo, err error) error {
 	if fi.Mode().IsDir() {
 		return watcher.Add(path)
 	}
+	determineAction(path)
 
 	return nil
+}
+
+// main
+func main() {
+
+	// creates a new file watcher
+	watcher, _ = fsnotify.NewWatcher()
+	defer watcher.Close()
+
+	cpuCount := runtime.NumCPU()
+	fileOperations = make(chan action, cpuCount)
+	defer close(fileOperations)
+
+	// starting at the root of the project, walk each file/directory searching for
+	// directories
+	directoryPath := os.Args[1]
+
+	go handleFile()
+
+	go func() {
+		for {
+			select {
+			// watch for events
+			case event := <-watcher.Events:
+				determineAction(event.Name)
+				// watch for errors
+			case err := <-watcher.Errors:
+				fmt.Println("ERROR", err)
+			}
+		}
+	}()
+
+	if err := filepath.Walk(directoryPath, watchDir); err != nil {
+		fmt.Println("ERROR", err)
+	}
+
+	done := make(chan bool)
+	<-done
 }
