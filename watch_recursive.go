@@ -1,13 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 
 	concurrent "github.com/echaouchna/go-threadpool"
 	"github.com/fsnotify/fsnotify"
+	log "github.com/sirupsen/logrus"
 )
 
 var watcher *fsnotify.Watcher
@@ -35,11 +35,11 @@ var (
 )
 
 func copyFile(id int, value interface{}) {
-	fmt.Printf("Adding! %#v\n", value)
+	log.Infof("Adding! %#v\n", value)
 }
 
 func removeFile(id int, value interface{}) {
-	fmt.Printf("Removing! %#v\n", value)
+	log.Infof("Removing! %#v\n", value)
 }
 
 func determineAction(path string) {
@@ -52,7 +52,7 @@ func determineAction(path string) {
 	if op == remove || !fi.IsDir() {
 		fileOperations <- concurrent.Action{Name: op.value(), Data: path}
 	} else if err := filepath.Walk(path, watchDir); err != nil {
-		fmt.Println("ERROR", err)
+		log.Errorln("ERROR", err)
 	}
 }
 
@@ -99,13 +99,13 @@ func main() {
 				determineAction(event.Name)
 				// watch for errors
 			case err := <-watcher.Errors:
-				fmt.Println("ERROR", err)
+				log.Errorln("ERROR", err)
 			}
 		}
 	}()
 
 	if err := filepath.Walk(directoryPath, watchDir); err != nil {
-		fmt.Println("ERROR", err)
+		log.Errorln("ERROR", err)
 	}
 
 	done := make(chan bool)
