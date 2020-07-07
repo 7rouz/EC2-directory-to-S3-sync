@@ -1,6 +1,8 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,11 +30,24 @@ type action struct {
 	actionType actionType
 }
 
+type cliOptions struct {
+	version bool
+	src     string
+	dest    string
+}
+
 // var fileOperations chan action
 var (
 	fileOperations chan concurrent.Action
 	version        string
+	opts           cliOptions
 )
+
+func init() {
+	flag.BoolVar(&opts.version, "version", false, "Prints version")
+	flag.StringVar(&opts.dest, "s3", "", "S3 destination")
+	flag.StringVar(&opts.src, "src", "", "Local source directory")
+}
 
 func copyFile(id int, value interface{}) {
 	log.Infof("Adding! %#v\n", value)
@@ -69,8 +84,23 @@ func watchDir(path string, fi os.FileInfo, err error) error {
 	return nil
 }
 
+func validateOptions() {
+	if _, err := os.Stat(opts.src); os.IsNotExist(err) {
+		log.Errorln("src error:", err)
+		os.Exit(1)
+	}
+}
+
 // main
 func main() {
+	flag.Parse()
+
+	if opts.version {
+		fmt.Println(version)
+		os.Exit(0)
+	}
+
+	validateOptions()
 
 	// creates a new file watcher
 	watcher, _ = fsnotify.NewWatcher()
@@ -82,7 +112,7 @@ func main() {
 
 	// starting at the root of the project, walk each file/directory searching for
 	// directories
-	directoryPath := os.Args[1]
+	directoryPath := opts.src
 
 	actionJobs := make(map[string]concurrent.JobFunc)
 	actionJobs[copy.value()] = copyFile
