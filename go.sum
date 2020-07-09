@@ -1,7 +1,7 @@
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/echaouchna/go-threadpool v0.0.0-20200708194923-5314821746ef h1:loSbRFm1LQc4SIlXYDuVpFWFyHo8QVQk8aqcYULGI2Y=
-github.com/echaouchna/go-threadpool v0.0.0-20200708194923-5314821746ef/go.mod h1:mHRlmS5S5VnA7SUIuRpPIGE2JOFW7bch6v6kTa3+wec=
+github.com/echaouchna/go-threadpool v0.0.0-20200709091156-6f0dae664105 h1:IYTa4Fl+WMrMqdp8lNvxqu+HCJm3zVy8VYbUeiV2Kas=
+github.com/echaouchna/go-threadpool v0.0.0-20200709091156-6f0dae664105/go.mod h1:mHRlmS5S5VnA7SUIuRpPIGE2JOFW7bch6v6kTa3+wec=
 github.com/fsnotify/fsnotify v1.4.9 h1:hsms1Qyu0jgnwNXIxa+/V/PDsU6CfLf6CNO8H7IWoS4=
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/konsorten/go-windows-terminal-sequences v1.0.3 h1:CE8S1cTafDpPvMhIxNJKvHsGVBgn1xWYf1NbHQhywc8=

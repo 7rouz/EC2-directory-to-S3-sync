@@ -267,7 +267,7 @@ func main() {
 	JobFunc := make(map[string]concurrent.JobFunc)
 	JobFunc[copy.value()] = copyFile
 	JobFunc[remove.value()] = removeFile
-	_, _, stopWorkers := concurrent.RunWorkers(fileOperations, JobFunc, 0)
+	_, _, stopWorkers, _ := concurrent.RunWorkers(fileOperations, JobFunc, 0)
 
 	defer stopWorkers()
 
