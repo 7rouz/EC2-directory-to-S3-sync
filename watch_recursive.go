@@ -71,9 +71,11 @@ var (
 		"debug": log.DebugLevel,
 		"trace": log.TraceLevel,
 	}
-	opts    cliOptions
-	version string
-	watcher *fsnotify.Watcher
+	opts      cliOptions
+	s3Session *session.Session
+	uploader  *s3manager.Uploader
+	version   string
+	watcher   *fsnotify.Watcher
 )
 
 func init() {
@@ -83,6 +85,20 @@ func init() {
 	flag.StringVar(&opts.region, "region", "us-west-2", "S3 region")
 	flag.StringVar(&opts.remotePrefix, "remote-prefix", "", "Remote path prefix")
 	flag.StringVar(&opts.src, "src", "", "Local source directory")
+}
+
+func initS3Manager(concurrency int) {
+	s3Session, _ := session.NewSession(&aws.Config{
+		Region: aws.String(opts.region)},
+	)
+
+	// Setup the S3 Upload Manager. Also see the SDK doc for the Upload Manager
+	// for more information on configuring part size, and concurrency.
+	//
+	// http://docs.aws.amazon.com/sdk-for-go/api/service/s3/s3manager/#NewUploader
+	uploader = s3manager.NewUploader(s3Session, func(u *s3manager.Uploader) {
+		u.Concurrency = concurrency
+	})
 }
 
 func copyFile(id int, value interface{}) {
@@ -96,15 +112,6 @@ func copyFile(id int, value interface{}) {
 	}
 
 	defer file.Close()
-	session, err := session.NewSession(&aws.Config{
-		Region: aws.String(opts.region)},
-	)
-
-	// Setup the S3 Upload Manager. Also see the SDK doc for the Upload Manager
-	// for more information on configuring part size, and concurrency.
-	//
-	// http://docs.aws.amazon.com/sdk-for-go/api/service/s3/s3manager/#NewUploader
-	uploader := s3manager.NewUploader(session)
 
 	_, err = uploader.Upload(&s3manager.UploadInput{
 		Bucket: aws.String(opts.dest),
@@ -124,20 +131,17 @@ func removeFile(id int, value interface{}) {
 	localPath := value.(string)
 	remotePath := filepath.Join(opts.remotePrefix, localPath)
 	log.Infof("Removing file! %#v", localPath)
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(opts.region)},
-	)
 
 	// Create S3 service client
-	svc := s3.New(sess)
+	service := s3.New(s3Session)
 
-	_, err = svc.DeleteObject(&s3.DeleteObjectInput{Bucket: aws.String(opts.dest), Key: aws.String(remotePath)})
+	_, err := service.DeleteObject(&s3.DeleteObjectInput{Bucket: aws.String(opts.dest), Key: aws.String(remotePath)})
 	if err != nil {
 		log.Errorf("Unable to delete object %q from bucket %q, %v", remotePath, opts.dest, err)
 		return
 	}
 
-	err = svc.WaitUntilObjectNotExists(&s3.HeadObjectInput{
+	err = service.WaitUntilObjectNotExists(&s3.HeadObjectInput{
 		Bucket: aws.String(opts.dest),
 		Key:    aws.String(remotePath),
 	})
@@ -309,13 +313,15 @@ func main() {
 		os.Exit(0)
 	}
 
+	cpuCount := runtime.NumCPU()
+
 	validateOptions()
+
+	initS3Manager(cpuCount)
 
 	// creates a new file watcher
 	watcher, _ = fsnotify.NewWatcher()
 	defer watcher.Close()
-
-	cpuCount := runtime.NumCPU()
 	fileOperations = make(chan concurrent.Action, cpuCount)
 	defer close(fileOperations)
 
