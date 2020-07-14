@@ -1,0 +1,2 @@
+#!/bin/sh
+${EC2_DIRECTORY_TO_S3_SYNC_PATH} "$@"
