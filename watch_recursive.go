@@ -13,6 +13,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	concurrent "github.com/echaouchna/go-threadpool"
 	"github.com/fsnotify/fsnotify"
 	"github.com/sirupsen/logrus"
@@ -36,10 +40,12 @@ type action struct {
 }
 
 type cliOptions struct {
-	version  bool
-	src      string
-	dest     string
-	logLevel string
+	dest         string
+	logLevel     string
+	region       string
+	remotePrefix string
+	src          string
+	version      bool
 }
 
 type safeDirList struct {
@@ -72,17 +78,70 @@ var (
 
 func init() {
 	flag.BoolVar(&opts.version, "version", false, "Prints version")
-	flag.StringVar(&opts.dest, "s3", "", "S3 destination")
-	flag.StringVar(&opts.src, "src", "", "Local source directory")
+	flag.StringVar(&opts.dest, "s3", "", "S3 destination bucket")
 	flag.StringVar(&opts.logLevel, "log-level", "info", "Local source directory")
+	flag.StringVar(&opts.region, "region", "us-west-2", "S3 region")
+	flag.StringVar(&opts.remotePrefix, "remote-prefix", "", "Remote path prefix")
+	flag.StringVar(&opts.src, "src", "", "Local source directory")
 }
 
 func copyFile(id int, value interface{}) {
-	log.Infof("Copying file! %#v\n", value)
+	localPath := value.(string)
+	remotePath := filepath.Join(opts.remotePrefix, localPath)
+	log.Infof("Copying file! %#v", localPath)
+	file, err := os.Open(localPath)
+	if err != nil {
+		log.Errorf("Unable to open file %q, %v", localPath, err)
+		return
+	}
+
+	defer file.Close()
+	session, err := session.NewSession(&aws.Config{
+		Region: aws.String(opts.region)},
+	)
+
+	// Setup the S3 Upload Manager. Also see the SDK doc for the Upload Manager
+	// for more information on configuring part size, and concurrency.
+	//
+	// http://docs.aws.amazon.com/sdk-for-go/api/service/s3/s3manager/#NewUploader
+	uploader := s3manager.NewUploader(session)
+
+	_, err = uploader.Upload(&s3manager.UploadInput{
+		Bucket: aws.String(opts.dest),
+		Key:    aws.String(remotePath),
+		Body:   file,
+	})
+	if err != nil {
+		// Print the error and exit.
+		log.Errorf("Unable to upload %q to %q, %v", localPath, opts.dest, err)
+		return
+	}
+
+	log.Infof("Successfully uploaded %q to %q:%q", localPath, opts.dest, remotePath)
 }
 
 func removeFile(id int, value interface{}) {
-	log.Infof("Removing file! %#v\n", value)
+	localPath := value.(string)
+	remotePath := filepath.Join(opts.remotePrefix, localPath)
+	log.Infof("Removing file! %#v", localPath)
+	sess, err := session.NewSession(&aws.Config{
+		Region: aws.String(opts.region)},
+	)
+
+	// Create S3 service client
+	svc := s3.New(sess)
+
+	_, err = svc.DeleteObject(&s3.DeleteObjectInput{Bucket: aws.String(opts.dest), Key: aws.String(remotePath)})
+	if err != nil {
+		log.Errorf("Unable to delete object %q from bucket %q, %v", remotePath, opts.dest, err)
+		return
+	}
+
+	err = svc.WaitUntilObjectNotExists(&s3.HeadObjectInput{
+		Bucket: aws.String(opts.dest),
+		Key:    aws.String(remotePath),
+	})
+	log.Infof("Object %q successfully deleted from %q", remotePath, opts.dest)
 }
 
 func removePathFromWatchList(path string) (removed bool) {
